@@ -60,6 +60,20 @@ class ProviderError(RuntimeError):
     """Transport, auth, or rate-limit failure. Never a code defect."""
 
 
+class EmptyResponse(ProviderError):
+    """The provider returned no answer at all.
+
+    Distinct from a model failure. A reasoning model given a tight
+    ``max_tokens`` will spend the entire budget on its reasoning trace and
+    return ``content: null`` with the code nowhere in the response. The
+    verifier would score that empty string as a SyntaxError and the corpus
+    would record a defect the model never committed -- qwen3.5-9b produced
+    three of those before this was caught.
+
+    It is a harness configuration error, so it is raised rather than scored.
+    """
+
+
 @dataclass
 class Generation:
     """One model response plus everything needed to reproduce it."""
@@ -125,14 +139,22 @@ class TargetStats:
         )
 
 
-def _extract_code(raw: str) -> str:
+def _extract_code(raw: str | None) -> str:
     """Pull a function out of a model response.
 
     Models wrap code in fences, prefix it with prose, or both. A target whose
     failure is 'wrote prose instead of code' is a real failure and must be
     recorded as one -- so this returns the best available code candidate and
     lets the verifier decide, rather than raising here.
+
+    ``raw`` may be None. Reasoning models return ``content: null`` and put the
+    output in ``reasoning`` instead, which is a provider shape difference and
+    not a model failure. Treating it as a crash took down a whole live run, so
+    the reasoning field is read as a fallback and a genuinely empty response
+    yields an empty candidate that the verifier scores as a defect.
     """
+    if not raw:
+        return ""
     text = raw.strip()
 
     if "```" in text:
@@ -217,7 +239,24 @@ class LLMTarget:
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         choice = (payload.get("choices") or [{}])[0]
-        raw = (choice.get("message") or {}).get("content", "")
+        message = choice.get("message") or {}
+        raw = message.get("content")
+        reasoning = message.get("reasoning") or ""
+        finish = choice.get("finish_reason", "unknown")
+
+        # A reasoning model that spent its whole budget thinking returns
+        # content: null and finish_reason 'length'. That is a harness
+        # configuration error, not a model defect, and scoring it as a
+        # SyntaxError writes a fabricated failure into the corpus.
+        if finish == "length" and not raw:
+            self.stats.record(None, error=True)
+            raise EmptyResponse(
+                f"{self.model_id} exhausted max_tokens={self.max_tokens} while "
+                f"reasoning and returned no answer ({len(reasoning)} chars of "
+                "reasoning). Raise --max-tokens or use a non-reasoning model."
+            )
+        if not raw:
+            raw = reasoning or ""
         usage = payload.get("usage") or {}
 
         gen = Generation(

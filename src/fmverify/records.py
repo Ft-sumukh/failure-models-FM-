@@ -162,12 +162,55 @@ def build_record(
         dataset={
             "eligible_for_training": eligible,
             "exclusion_reason": exclusion,
-            "dedup_cluster": f"{attack.fm_id}:{primary_category}",
+            # The dedup key must collapse the SAME defect discovered by
+            # different probes. A candidate that ignores its parameters fails
+            # identically on all 18 probes for its family, and keying on
+            # (fm, category) recorded one defect 12 times -- inflating a
+            # 2-distinct-failure run to 24 records. The key is
+            # (task family, error type, category): two records sharing it are
+            # the same bug found twice.
+            "dedup_cluster": "|".join(
+                [
+                    contract.task_family,
+                    str(verdict.error_type or "behaviour"),
+                    primary_category if status == "verified_failure" else "non_failure",
+                ]
+            ),
             "created_at": _now(),
             "dataset_version": dataset_version,
         },
     )
     return record
+
+
+def count_distinct_failures(records: list) -> int:
+    """How many genuinely different failures a set of records contains.
+
+    This is the number that matters. Record count measures how many times the
+    FMs noticed something, not how many bugs exist, and a single defect found
+    on every probe will always produce a large record count. A pipeline
+    reporting yield as raw record totals would have claimed 24 findings where
+    there were 2.
+    """
+    return len({r.dataset.get("dedup_cluster") for r in records})
+
+
+def filter_new_failures(records: list, seen: set[str] | None = None) -> list:
+    """Keep only the first record of each distinct failure.
+
+    Use this to build treatment data. Feeding 12 copies of one bug to a
+    fine-tuning run teaches that bug 12 times and teaches nothing else.
+    """
+    if seen is None:
+        seen = set()
+    fresh: list = []
+    for record in records:
+        cluster = record.dataset.get("dedup_cluster")
+        if cluster in seen:
+            continue
+        seen.add(cluster)
+        fresh.append(record)
+    return fresh
 
 
 class AcceptanceGate:

@@ -34,7 +34,12 @@ import fmverify.hard_tasks  # noqa: E402,F401  -- registers the harder families
 
 from fmverify.fms import AUXILIARY_FMS, TRAINING_FMS, assert_split  # noqa: E402
 from fmverify.llm_target import LLMTarget, ProviderError, probe_cost_estimate  # noqa: E402
-from fmverify.records import AcceptanceGate, build_record  # noqa: E402
+from fmverify.records import (  # noqa: E402
+    AcceptanceGate,
+    build_record,
+    count_distinct_failures,
+    filter_new_failures,
+)
 from fmverify.tasks import _REFERENCE_IMPLS, get_task  # noqa: E402
 from fmverify.verifier import UNVERIFIABLE, verify_candidate  # noqa: E402
 
@@ -72,6 +77,10 @@ def main() -> int:
     )
     ap.add_argument("--per-family", type=int, default=4, help="probes per family per FM")
     ap.add_argument("--temperature", type=float, default=0.0)
+    ap.add_argument(
+        "--max-tokens", type=int, default=2048,
+        help="token budget; reasoning models need headroom or they return nothing",
+    )
     ap.add_argument("--seed", type=int, default=2026)
     ap.add_argument("--out", default="research/data/corpus/live_probe_records.json")
     ap.add_argument(
@@ -83,7 +92,11 @@ def main() -> int:
 
     families = [f.strip() for f in args.families.split(",") if f.strip()]
     try:
-        target = LLMTarget(args.model, temperature=args.temperature)
+        target = LLMTarget(
+            args.model,
+            temperature=args.temperature,
+            max_tokens=args.max_tokens,
+        )
     except ProviderError as exc:
         print(f"FATAL: {exc}")
         print("Set OPENROUTER_API_KEY in the environment.")
@@ -207,20 +220,29 @@ def main() -> int:
         print("Step 3 -- verified failure records")
         print(THIN)
         admitted = [r for r in records if r.dataset["eligible_for_training"]]
-        print(f"  verified failures : {len(records)}")
-        print(f"  admitted by gate  : {len(admitted)}")
+        distinct = count_distinct_failures(records)
+        unique_records = len(filter_new_failures(records))
+        print(f"  probe hits (raw records) : {len(records)}")
+        print(f"  DISTINCT failures        : {distinct}")
+        print(f"  unique treatment records : {unique_records}")
+        print(f"  admitted by gate         : {len(admitted)}")
+        print()
+        if len(records) > distinct:
+            print(f"  NOTE: {len(records)} hits collapsed to {distinct} distinct bugs.")
+            print("  One defect found on many probes inflates raw record count.")
+            print("  Distinct count is the yield; raw count is not.")
+            print()
         by_cat = defaultdict(int)
-        for r in records:
+        for r in filter_new_failures(records):
             by_cat[r.analysis["primary_category"]] += 1
+        print("  distinct failures by category:")
         for cat, n in sorted(by_cat.items(), key=lambda kv: -kv[1]):
             print(f"    {cat:<32} {n}")
         print()
-        for r in records[:3]:
-            print(f"  example: {r.attack['fm_id']} on {r.task['task_id']}")
-            print(f"    category: {r.analysis['primary_category']}")
-            print(f"    reason  : {r.analysis['summary'][:100]}")
-            print(f"    input   : {json.dumps(r.attack.get('input_ref'))} "
-                  f"(seed {r.attack.get('seed')})")
+        for r in filter_new_failures(records)[:4]:
+            print(f"  distinct failure: {r.task['task_id']} / {r.attack['fm_id']}")
+            print(f"    cluster: {r.dataset['dedup_cluster']}")
+            print(f"    reason : {r.analysis['summary'][:96]}")
         print()
 
         out_path = ROOT / args.out

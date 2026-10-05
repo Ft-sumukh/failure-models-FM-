@@ -31,6 +31,8 @@ from fmverify.records import (  # noqa: E402
     AcceptanceGate,
     FailureRecord,
     build_record,
+    count_distinct_failures,
+    filter_new_failures,
 )
 from fmverify.targets import CLEAN_TARGET, FLAWED_TARGET  # noqa: E402
 from fmverify.tasks import _REFERENCE_IMPLS, get_task  # noqa: E402
@@ -104,6 +106,97 @@ class TestRecordShape:
         rec.analysis["repair_verified"] = False
         problems = rec.validate_shape()
         assert any("repair" in p for p in problems)
+
+
+class TestYieldAccounting:
+    """Raw record count must never be reported as discovery yield.
+
+    A candidate with one defect fails identically on every probe for its
+    family, so raw record count scales with probe budget while distinct
+    failure count does not. A run that reported 24 records where 2 distinct
+    bugs existed would have overstated the corpus 12x, and a fine-tuning run
+    on those records would have taught one bug 12 times.
+    """
+
+    def _make(self, family, error_type, category, n):
+        from fmverify.fms import Attack
+        from fmverify.tasks import get_task
+        from fmverify.verifier import Verdict
+
+        contract, _o, _i = get_task(family)
+        out = []
+        for i in range(n):
+            attack = Attack(
+                fm_id="boundary-fm", fm_version="0.3.1", strategy="t",
+                family=family, input_value=[], seed=i,
+            )
+            verdict = Verdict(
+                verdict="confirmed_mismatch",
+                reason=f"candidate raised {error_type}",
+                error_type=error_type,
+            )
+            out.append(
+                build_record(contract, attack, "t@1", verdict, category)
+            )
+        return out
+
+    def test_repeated_hits_of_one_bug_collapse(self):
+        recs = self._make("clamp-list", "TypeError", "input_shape_assumption", 12)
+        assert len(recs) == 12
+        assert count_distinct_failures(recs) == 1
+        assert len(filter_new_failures(recs)) == 1
+
+    def test_different_families_are_different_failures(self):
+        a = self._make("clamp-list", "TypeError", "input_shape_assumption", 6)
+        b = self._make("chunk-sum", "TypeError", "input_shape_assumption", 6)
+        assert count_distinct_failures(a + b) == 2
+
+    def test_different_error_types_are_different_failures(self):
+        a = self._make("clamp-list", "TypeError", "input_shape_assumption", 4)
+        b = self._make("clamp-list", "IndexError", "boundary_condition", 4)
+        assert count_distinct_failures(a + b) == 2
+
+    def test_different_fms_finding_the_same_bug_do_not_double_count(self):
+        """The FM is the finder, not the finding.
+
+        Two FMs noticing the same defect is one defect.
+        """
+        from fmverify.fms import Attack
+        from fmverify.tasks import get_task
+        from fmverify.verifier import Verdict
+
+        contract, _o, _i = get_task("clamp-list")
+        recs = []
+        for fm_id in ("boundary-fm", "adversarial-input-fm"):
+            attack = Attack(
+                fm_id=fm_id, fm_version="1", strategy="t",
+                family="clamp-list", input_value=[], seed=0,
+            )
+            verdict = Verdict(
+                verdict="confirmed_mismatch", reason="raised TypeError",
+                error_type="TypeError",
+            )
+            recs.append(
+                build_record(contract, attack, "t@1", verdict,
+                             "input_shape_assumption")
+            )
+        assert count_distinct_failures(recs) == 1
+
+    def test_filter_respects_a_preset_seen_set(self):
+        recs = self._make("clamp-list", "TypeError", "input_shape_assumption", 4)
+        cluster = recs[0].dataset["dedup_cluster"]
+        fresh = filter_new_failures(recs, seen={cluster})
+        assert fresh == []
+
+    def test_filter_preserves_source_order(self):
+        recs = (
+            self._make("clamp-list", "TypeError", "input_shape_assumption", 3)
+            + self._make("chunk-sum", "IndexError", "boundary_condition", 3)
+        )
+        fresh = filter_new_failures(recs)
+        assert len(fresh) == 2
+        assert fresh[0] is recs[0]
+        assert fresh[1] is recs[3]
 
 
 class TestAcceptanceGate:
