@@ -10,9 +10,16 @@ Continuous, automated answer to one question:
 This is the applied half of the project. For the unifying argument, read
 [../docs/thesis.md](../docs/thesis.md) first.
 
-**Status: specified, not deployed.** The empirical premise is unverified, the
-core research question is open, and no witness set has been run against a
-production system. The largest risk is named in §5.
+**Status: specified, and the core metric is measured.** The empirical premise
+is unverified, no witness set has been run against a production system, and
+all figures come from a synthetic target.
+
+The Phase 1 result was negative and is reported as such in
+[../RESULTS.md](../RESULTS.md): no text-comparison metric separates functional
+change from sampling noise. Phase 2 replaced text comparison with
+decision-level comparison and reached d′ ≈ +32 on the same profiles, with a
+threshold that transfers across them. The largest remaining risk is named in
+§5 and is not a metric problem.
 
 ---
 

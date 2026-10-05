@@ -3,10 +3,20 @@
 > **Break it before the world does. Then prove the break was real.**
 
 This is the research half of the project. For the unifying argument and the
-prior art, read [../docs/thesis.md](../docs/thesis.md) first.
+prior art, read [../docs/thesis.md](../docs/thesis.md) first. **For measured
+results, read [../RESULTS.md](../RESULTS.md).**
 
-**Status: specified, not run.** Nothing in this document is a result. No FMs
-have been built, no failures discovered, no fine-tuning performed.
+**Status: instrument built and validated. Primary hypothesis untested.**
+
+What exists: the loop, a four-verdict exogenous verifier, three training FMs
+plus a held-out FM, the acceptance gate, and a live model adapter. Validated
+offline against targets with documented weaknesses, and against live models
+where a control confirms injected bugs are caught.
+
+What does not exist: a fine-tuned model, or any transfer measurement. A live
+sweep across three models produced 40 probe hits resolving to **4 distinct
+failures** — all signature/arity confusion, which is too narrow to demonstrate
+generalization. `sealed_eval` is empty.
 
 ---
 

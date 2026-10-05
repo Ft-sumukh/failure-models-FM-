@@ -19,6 +19,22 @@ instruments for.
 | **A** | [Research — the FM loop](research/) | Does learning from verified failures improve a model on failures from an attacker it never trained against? | A measured result about transfer |
 | **B** | [Application — Witness](application/) | Has this AI system materially changed since we last assessed it, and does that count as significant? | Regulatory-grade evidence for a human determination |
 
+**Start with [RESULTS.md](RESULTS.md)** — every measurement taken so far, with
+the command that produced it. **[BUILD.md](BUILD.md)** covers the code.
+
+Where things actually stand:
+
+- **Track A** has a working loop, validated offline and against live models. A
+  3-model sweep produced **40 probe hits resolving to 4 distinct failures**,
+  and the control confirms the instrument finds injected bugs whenever the
+  original was clean. **No model has been fine-tuned, so the primary
+  hypothesis is still untested.**
+- **Track B** produced a genuine negative result, then a fix. Text-comparison
+  metrics have d′ between −1.5 and +0.3 and are unusable; reducing responses to
+  decisions before comparing reaches **d′ ≈ +32** with a threshold that
+  transfers across noise profiles. Measured on a synthetic target, so the
+  method transfers and the numbers do not.
+
 ---
 
 ## The one argument underneath both tracks
@@ -122,6 +138,8 @@ the research core is open. See the risk register in
 
 ```text
 README.md                    this file — two tracks, one argument
+RESULTS.md                   every measurement, with the command that produced it
+BUILD.md                     what is implemented, what is not, how to run it
 docs/
   thesis.md                  the unifying claim, prior art, kill criteria
 research/
@@ -130,21 +148,30 @@ research/
     README.md                record schema, split policy, admission rules
     schema/                  JSON Schema + worked template
     splits/                  split manifest (empty, by design)
+    corpus/                  live run output (gitignored, regenerated per run)
 application/
   README.md                  Track B: Witness, in full
   schema/                    witness-set and attestation schemas
+src/fmverify/                the harness
+tests/                       85 tests
+scripts/                     run_demo.py (offline), run_live_*.py (live)
 ```
 
 ---
 
 ## What is not claimed
 
-- No FMs have been built. No failures have been discovered.
-- No fine-tuning run has been performed. No transfer result exists.
-- No witness set has been deployed. Silent drift is **not** yet established as
-  frequent or consequential by our own data — the figure circulating in the
+- **No model has been fine-tuned. No transfer result exists.** The primary
+  hypothesis is untested, and this is the largest gap in the project.
+- **No transfer measurement.** `sealed_eval` is empty, so the held-out
+  attacker has never been run against a candidate model.
+- **The live corpus is 4 distinct failures, all one class** — signature and
+  arity confusion. Too narrow to demonstrate generalization. 40 probe hits
+  resolved to those 4; raw record count overstates yield by 10×.
+- **No witness set has been deployed.** Silent drift is **not** yet established
+  as frequent or consequential by our own data — the figure circulating in the
   field traces to a single vendor blog and we treat it as unverified.
-- No legal conclusion is offered. The regulatory mapping in
+- **No legal conclusion is offered.** The regulatory mapping in
   [application/README.md](application/README.md) is engineering guidance for
   a conversation with counsel, not a legal opinion, and one deadline in it is
   actively disputed between sources.
@@ -159,10 +186,14 @@ earns its claims through its measurements or not at all.
 
 Read in this order:
 
-1. [docs/thesis.md](docs/thesis.md) — what we believe and what would prove us wrong.
-2. [research/README.md](research/README.md) — the loop and the experiment.
-3. [application/README.md](application/README.md) — the product and its risks.
-4. [research/data/README.md](research/data/README.md) — how a failure becomes a record.
+1. [RESULTS.md](RESULTS.md) — what has actually been measured, including the failures.
+2. [docs/thesis.md](docs/thesis.md) — what we believe and what would prove us wrong.
+3. [BUILD.md](BUILD.md) — the code, and what is not built.
+4. [research/README.md](research/README.md) — the loop and the experiment.
+5. [application/README.md](application/README.md) — the product and its risks.
+6. [research/data/README.md](research/data/README.md) — how a failure becomes a record.
 
-Two cheap experiments can invalidate this entire repository. Both are listed
-in the kill criteria. Run them before writing any code.
+The next real step is the transfer experiment: fine-tune on the verified
+failures, then measure against the held-out `property-fm` on tasks it has
+never seen. That is the first thing in this project that can actually be
+wrong.

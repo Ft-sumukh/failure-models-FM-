@@ -3,9 +3,15 @@
 The record format, split policy, and admission rules that make a failure
 usable as training signal — and auditable as a claim.
 
-**Status: schema and policy only. The corpus is empty by design.** No failure
-has been discovered. Empty splits are correct until a verifier has actually
-run; a populated split with no provenance is worse than an empty one.
+**Status: schema and policy in use. Corpus holds 4 distinct failures, all one
+class. No fine-tuning has been run. See [../../RESULTS.md](../../RESULTS.md)
+for the live measurements.
+
+The corpus directory is **gitignored**. Its contents are model outputs from a
+specific provider at a specific time, and a stale corpus is worse than an
+empty one — records generated before the dedup key was fixed would have
+reported 24 failures where 4 existed. Regenerate with
+`scripts/run_live_probe.py` rather than committing a run.
 
 Related: [../README.md](../README.md) · [../../docs/thesis.md](../../docs/thesis.md)
 
