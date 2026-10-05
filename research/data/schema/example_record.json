@@ -1,0 +1,59 @@
+{
+  "$comment": "WORKED EXAMPLE — NOT REAL DATA. Every identifier, path, hash, and timing here is fabricated for illustration. Do not import this into a corpus or cite it as a discovered failure. When a real record exists it must reference a real oracle, a real replay command, and a real reproduction.",
+  "record_id": "fr_0000EXAMPLE",
+  "status": "verified_failure",
+  "schema_version": "1.0.0",
+  "task": {
+    "task_id": "list-dedupe@1.0.0",
+    "contract": "Given a list of integers, return the list with duplicates removed and first-occurrence order preserved. Empty input must return empty list. No input may cause an exception.",
+    "oracle_ref": "blobs/oracles/list-dedupe/oracle-v1.json",
+    "language": "python",
+    "split": "train"
+  },
+  "attack": {
+    "fm_id": "boundary-fm",
+    "fm_version": "0.3.1",
+    "strategy": "edge-case generation: empty and singleton inputs",
+    "seed": 1729,
+    "input_ref": "blobs/attacks/fr_0000EXAMPLE/input.json",
+    "provenance": "generated"
+  },
+  "target": {
+    "model_id": "target-code-model@base",
+    "prompt_hash": "sha256:0f1e2d3c4b5a69780011223344556677889900112233445566778899aabbcc",
+    "decoding": {
+      "temperature": 0,
+      "seed": 11,
+      "max_tokens": 2048
+    },
+    "output_ref": "blobs/outputs/fr_0000EXAMPLE/candidate.py"
+  },
+  "verification": {
+    "verifier_version": "verifier@0.1.0",
+    "verdict": "reproduced",
+    "expected_ref": "blobs/oracles/list-dedupe/oracle-v1.json#case-003-empty",
+    "actual_ref": "blobs/verification/fr_0000EXAMPLE/trace.json",
+    "reproduction_command_ref": "repro/fr_0000EXAMPLE.sh",
+    "exit_status": 1,
+    "runtime_ms": 4,
+    "resource_limits": {
+      "time_ms": 2000,
+      "memory_mb": 256,
+      "network": false
+    }
+  },
+  "analysis": {
+    "primary_category": "boundary_condition",
+    "secondary_categories": ["input_shape_assumption"],
+    "summary": "Candidate indexes into the first element of the input list without checking length, raising IndexError on empty input. The contract requires empty input to return an empty list. The oracle asserts this case; the failure reproduces from a clean environment without the search that produced it.",
+    "repair_ref": "blobs/repairs/fr_0000EXAMPLE/candidate-fixed.py",
+    "repair_verified": true
+  },
+  "dataset": {
+    "eligible_for_training": true,
+    "exclusion_reason": null,
+    "dedup_cluster": "boundary:empty-input:unconditional-first-element-access",
+    "created_at": "2026-01-01T00:00:00Z",
+    "dataset_version": "corpus-0.0.0-unpopulated"
+  }
+}

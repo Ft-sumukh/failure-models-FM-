@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ft-sumukh/failure-models-FM-/failure_record.schema.json",
+  "title": "Failure Record",
+  "description": "One record in the failure dataset. Separates what the FM asked, what the target returned, what the verifier observed, and what the analyzer inferred, so each can be audited or rejected independently.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["record_id", "status", "schema_version", "task", "attack", "target", "verification", "analysis", "dataset"],
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "description": "Stable unique identifier, immutable once assigned."
+    },
+    "status": {
+      "type": "string",
+      "description": "verified_failure is the only status eligible for training.",
+      "enum": ["verified_failure", "non_failure", "invalid_probe", "rejected"]
+    },
+    "schema_version": {
+      "type": "string",
+      "description": "Record format version, so a corpus spanning versions stays interpretable."
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "contract", "oracle_ref", "language", "split"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "description": "Task family plus version. Families, not rows, drive splitting."
+        },
+        "contract": {
+          "type": "string",
+          "description": "Problem statement, interface, and constraints. Source of truth for verification."
+        },
+        "oracle_ref": {
+          "type": "string",
+          "description": "Immutable reference to the trusted solution or property suite. Never an FM's answer."
+        },
+        "language": {
+          "type": "string"
+        },
+        "split": {
+          "type": "string",
+          "enum": ["train", "validation", "sealed_eval", "dev"],
+          "description": "Declared in the manifest before discovery. Never reassigned to sealed_eval after results are seen."
+        }
+      }
+    },
+    "attack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fm_id", "fm_version", "strategy", "provenance"],
+      "properties": {
+        "fm_id": {
+          "type": "string",
+          "description": "Attacker family. The 'held-out attacker' claim is a claim about this field.",
+          "examples": ["boundary-fm", "adversarial-input-fm", "constraint-fm", "mutation-fm", "property-fm", "novelty-fm"]
+        },
+        "fm_version": {
+          "type": "string",
+          "description": "Commit or version. A renamed or reprompted FM is not an unseen attacker."
+        },
+        "strategy": {
+          "type": "string",
+          "description": "Edge-case generation, fuzzing, template application, metamorphic relation, and so on."
+        },
+        "seed": {
+          "type": "integer",
+          "description": "Generation seed, for replay."
+        },
+        "input_ref": {
+          "type": "string",
+          "description": "Immutable reference to the exact attack input."
+        },
+        "provenance": {
+          "type": "string",
+          "enum": ["generated", "mutated", "fuzzed", "curated"]
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_id", "decoding"],
+      "properties": {
+        "model_id": {
+          "type": "string",
+          "description": "Model and checkpoint identifier."
+        },
+        "prompt_hash": {
+          "type": "string",
+          "description": "Hash of the exact prompt, not the prompt text."
+        },
+        "decoding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["temperature"],
+          "properties": {
+            "temperature": { "type": "number" },
+            "seed": { "type": "integer" },
+            "max_tokens": { "type": "integer" }
+          }
+        },
+        "output_ref": {
+          "type": "string",
+          "description": "Immutable reference to the exact generated code."
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verifier_version", "verdict", "exit_status"],
+      "properties": {
+        "verifier_version": {
+          "type": "string"
+        },
+        "verdict": {
+          "type": "string",
+          "enum": ["confirmed_mismatch", "reproduced", "no_defect", "unverifiable"],
+          "description": "'unverifiable' is not a pass and not a failure. It means the probe was broken."
+        },
+        "expected_ref": { "type": "string" },
+        "actual_ref": { "type": "string" },
+        "reproduction_command_ref": {
+          "type": "string",
+          "description": "Replay configuration, runnable from a clean environment. This is what makes a failure checkable by someone who does not trust us."
+        },
+        "exit_status": { "type": "integer" },
+        "runtime_ms": { "type": "integer" },
+        "resource_limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "time_ms": { "type": "integer" },
+            "memory_mb": { "type": "integer" },
+            "network": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary_category"],
+      "properties": {
+        "primary_category": {
+          "type": "string",
+          "enum": [
+            "boundary_condition",
+            "input_shape_assumption",
+            "algorithmic_logic",
+            "numeric_behavior",
+            "complexity_failure",
+            "parsing_and_formatting",
+            "state_and_mutation",
+            "constraint_interaction",
+            "security_relevant",
+            "specification_ambiguity",
+            "invalid_or_non_reproducible"
+          ]
+        },
+        "secondary_categories": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "summary": {
+          "type": "string",
+          "description": "Short, evidence-grounded explanation. A hypothesis, not a verdict."
+        },
+        "repair_ref": {
+          "type": "string",
+          "description": "Candidate correction. Unverified until repair_verified is true."
+        },
+        "repair_verified": {
+          "type": "boolean",
+          "description": "True only if the correction independently passed the verifier."
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eligible_for_training", "created_at", "dataset_version"],
+      "properties": {
+        "eligible_for_training": { "type": "boolean" },
+        "exclusion_reason": {
+          "type": ["string", "null"],
+          "description": "Required when eligible_for_training is false. The most important field in the schema: rejection records are what prove the admission process discriminates."
+        },
+        "dedup_cluster": {
+          "type": "string",
+          "description": "Semantic task/failure family key, for near-duplicate detection beyond exact hashes."
+        },
+        "created_at": { "type": "string" },
+        "dataset_version": { "type": "string" }
+      }
+    }
+  }
+}

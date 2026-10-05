@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ft-sumukh/failure-models-FM-/witness_set.schema.json",
+  "title": "Witness Set",
+  "description": "A minimal, versioned set of probe inputs whose responses fingerprint the actual behavior of a deployed AI system. Re-run on a schedule; the responses are compared against a stored baseline to produce a behavioral diff.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["witness_set_id", "schema_version", "system_ref", "probes", "budget", "status"],
+  "properties": {
+    "witness_set_id": { "type": "string" },
+    "schema_version": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "baseline_established", "stale", "retired"],
+      "description": "'stale' is an operational state, not an error: the witness set drifts itself and must be refreshed. A set that never goes stale is not being measured."
+    },
+    "system_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system_id", "intended_purpose_ref", "risk_profile_ref"],
+      "properties": {
+        "system_id": { "type": "string" },
+        "intended_purpose_ref": {
+          "type": "string",
+          "description": "The declared intended purpose. The significance stage maps a drift onto THIS document, which is why it must be a versioned artifact rather than prose."
+        },
+        "risk_profile_ref": { "type": "string" },
+        "jurisdictions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Where this system is deployed. Affects which obligations attach."
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "description": "A witness set needing 10k calls per day is not deployable in a regulated enterprise. Minimality is a hard design constraint, not an optimization target.",
+      "additionalProperties": false,
+      "required": ["max_probes_per_assessment"],
+      "properties": {
+        "max_probes_per_assessment": { "type": "integer" },
+        "assessment_interval": { "type": "string" },
+        "max_cost_per_assessment": { "type": ["number", "null"] },
+        "provider_rate_limit_compliance": {
+          "type": "string",
+          "description": "How the schedule respects provider rate limits. Friction here is a design constraint, not an edge case."
+        }
+      }
+    },
+    "probes": {
+      "type": "array",
+      "description": "The probes themselves. Every probe belongs to a capability cluster, so a diff can name what changed rather than just that something changed.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["probe_id", "capability_cluster", "input_ref", "oracle_kind"],
+        "properties": {
+          "probe_id": { "type": "string" },
+          "capability_cluster": {
+            "type": "string",
+            "description": "A named capability the probe exercises. This is the unit the diff reports movement on, and the unit the significance stage maps against the intended purpose."
+          },
+          "input_ref": { "type": "string" },
+          "oracle_kind": {
+            "type": "string",
+            "enum": ["exact_match", "property_based", "schema_conformance", "semantic_judge", "human_reviewed"],
+            "description": "How a correct response is determined. 'semantic_judge' and 'human_reviewed' are weaker signals and must be weighted accordingly — a judge is not a verifier (see docs/thesis.md)."
+          },
+          "discovered_by": {
+            "type": "string",
+            "description": "Provenance: seeded, clustered from a broader suite, or retained after a prior diff."
+          },
+          "baseline_response_ref": {
+            "type": ["string", "null"],
+            "description": "Stored response this probe is compared against. Null until the baseline is established."
+          },
+          "weight": {
+            "type": "number",
+            "description": "Contribution to the fingerprint. Higher for probes in capability clusters the intended purpose depends on."
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "seed_suite_ref": { "type": ["string", "null"] },
+        "selection_method": {
+          "type": "string",
+          "description": "How the minimal subset was chosen. The research contribution is that a small N suffices, so this must be a documented method rather than a hand-picked list."
+        },
+        "reduction_ratio": {
+          "type": ["number", "null"],
+          "description": "Size of witness set divided by size of the seed suite."
+        },
+        "validated_at": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "$comment": "SPLIT MANIFEST — reserved families are declared HERE, BEFORE any discovery run, and are never reassigned to sealed_eval after results are seen. Moving a family requires opening a documented change with a reason and a date, and reporting results under both assignments. An inclusion-only manifest is not a manifest.",
+  "manifest_version": "1.0.0",
+  "declared_at": null,
+  "frozen": false,
+  "partition_keys": [
+    "fm_family",
+    "attack_template",
+    "task_family",
+    "exact_hash_backstop"
+  ],
+  "partition_rule": "Partition by FAMILY, not by row. Hash-based splitting is a backstop, not a mechanism: near-duplicate tasks and variant templates leak across hash boundaries constantly because they differ in surface form while testing identical capability.",
+  "held_out_attacker_rule": "A renamed or reprompted training FM is NOT an unseen attacker. Attacker identity is the claim under test. If a candidate held-out FM shares a generator lineage, prompt, or template with any training FM, the evaluation measures recall of the training distribution rather than transfer.",
+  "splits": {
+    "train": {
+      "purpose": "FM discovery and treatment data",
+      "used_for_training": true,
+      "used_for_tuning": true,
+      "fm_families": [],
+      "task_families": [],
+      "attack_templates": []
+    },
+    "validation": {
+      "purpose": "Hyperparameters and checkpoint selection",
+      "used_for_training": false,
+      "used_for_tuning": true,
+      "fm_families": [],
+      "task_families": [],
+      "attack_templates": []
+    },
+    "sealed_eval": {
+      "purpose": "Transfer measurement. Evaluated once, after the selection policy is frozen.",
+      "used_for_training": false,
+      "used_for_tuning": false,
+      "fm_families": [],
+      "task_families": [],
+      "attack_templates": [],
+      "$note": "MUST contain at least one FM family and one attack template that appear in no other split. An empty sealed_eval means the primary hypothesis is untestable."
+    },
+    "dev": {
+      "purpose": "Infrastructure, prompts, and smoke tests. Not a measurement surface.",
+      "used_for_training": false,
+      "used_for_tuning": false,
+      "fm_families": [],
+      "task_families": [],
+      "attack_templates": []
+    }
+  },
+  "integrity_checks": [
+    "Every family and template appears in exactly one split.",
+    "sealed_eval contains at least one FM family absent from all other splits.",
+    "No task family in sealed_eval appears in any other split.",
+    "Near-duplicate detection has run across splits BEFORE fine-tuning.",
+    "frozen is true before any fine-tuning run begins."
+  ],
+  "change_log": []
+}

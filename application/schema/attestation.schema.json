@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ft-sumukh/failure-models-FM-/attestation.schema.json",
+  "title": "Change Attestation",
+  "description": "The output artifact. Records a behavioral diff, a significance assessment, and the evidence supporting both, for a human determination. This schema deliberately contains no compliance conclusion field: the system produces evidence, and counsel makes determinations.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["attestation_id", "schema_version", "issued_at", "system_ref", "baseline_ref", "finding", "evidence"],
+  "properties": {
+    "attestation_id": { "type": "string" },
+    "schema_version": { "type": "string" },
+    "issued_at": { "type": "string" },
+    "system_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system_id", "intended_purpose_ref", "risk_profile_ref"],
+      "properties": {
+        "system_id": { "type": "string" },
+        "intended_purpose_ref": { "type": "string" },
+        "risk_profile_ref": { "type": "string" }
+      }
+    },
+    "baseline_ref": {
+      "type": "string",
+      "description": "The previously attested state this is compared against. Comparison to a versioned baseline is what makes the finding meaningful."
+    },
+    "observed_identity": {
+      "type": "object",
+      "description": "What the system reports about itself. Recorded as data, never trusted as verification — the whole premise is that self-report is not evidence.",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string" },
+        "model_id_as_called": { "type": "string" },
+        "alias_used": { "type": ["string", "null"] },
+        "resolved_version": { "type": ["string", "null"] },
+        "deprecation_notice_seen": { "type": ["boolean", "null"] },
+        "observed_at": { "type": "string" }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["change_detected", "moved_clusters", "confidence"],
+      "properties": {
+        "change_detected": { "type": "boolean" },
+        "moved_clusters": {
+          "type": "array",
+          "description": "Capability clusters whose behavior moved. Naming the capability is the product; 'something changed' is not useful to a compliance officer.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["capability_cluster", "delta_magnitude", "direction"],
+            "properties": {
+              "capability_cluster": { "type": "string" },
+              "delta_magnitude": { "type": "number" },
+              "direction": {
+                "type": "string",
+                "enum": ["improved", "degraded", "changed_behavior", "indeterminate"]
+              },
+              "probes_in_cluster": { "type": "integer" },
+              "probes_exceeding_noise_floor": {
+                "type": "integer",
+                "description": "How many probes in this cluster moved beyond sampling noise, not merely beyond zero difference. A cluster that moved by less than its own noise floor has not been observed to change."
+              }
+            }
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "description": "Confidence that a real functional change occurred, as distinct from sampling variance. Reported because the noise floor is the central research problem."
+        },
+        "noise_floor": {
+          "type": ["number", "null"],
+          "description": "Measured magnitude of change attributable purely to sampling. Nothing below this line counts as detected change."
+        }
+      }
+    },
+    "significance_assessment": {
+      "type": "object",
+      "description": "Maps moved clusters onto the declared intended purpose. The output is a recommendation with its reasoning exposed, NOT a determination.",
+      "additionalProperties": false,
+      "properties": {
+        "assessment": {
+          "type": "string",
+          "enum": ["likely_significant", "likely_not_significant", "requires_human_determination", "insufficient_evidence"],
+          "description": "A recommendation. Deliberately not 'compliant' or 'non-compliant' — those are legal conclusions and this system does not make them."
+        },
+        "rationale": { "type": "string" },
+        "mapping": {
+          "type": "array",
+          "description": "Which moved clusters map to which declared-purpose requirements.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["capability_cluster", "purpose_element"],
+            "properties": {
+              "capability_cluster": { "type": "string" },
+              "purpose_element": { "type": "string" },
+              "depends_on_this_capability": { "type": "boolean" }
+            }
+          }
+        },
+        "suggested_actions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Evidence-preserving next steps, e.g. 'schedule re-assessment' or 'refer to counsel'. Never 'you are compliant'."
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Sufficient to reproduce the finding by someone who does not trust us. A conclusion without replay detail is not evidence.",
+      "additionalProperties": false,
+      "required": ["replay_ref", "probe_count_executed", "assessments_count"],
+      "properties": {
+        "replay_ref": {
+          "type": "string",
+          "description": "Exact request set needed to reproduce this diff, not merely the conclusion."
+        },
+        "probe_count_executed": { "type": "integer" },
+        "assessments_count": {
+          "type": "integer",
+          "description": "How many times each probe was executed. Required to distinguish a real behavioral shift from sampling noise."
+        },
+        "raw_response_ref": { "type": ["string", "null"] },
+        "tool_versions": {
+          "type": "object",
+          "description": "Metric implementation, clustering method, and pipeline versions. Version pinning in prose is not a version."
+        },
+        "cost": { "type": ["number", "null"] }
+      }
+    },
+    "attestation_chain": {
+      "type": "array",
+      "description": "Append-only. Prior attestations, so a three-year-old audit file reconstructs the system's history.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attestation_id", "issued_at", "change_detected"],
+        "properties": {
+          "attestation_id": { "type": "string" },
+          "issued_at": { "type": "string" },
+          "change_detected": { "type": "boolean" }
+        }
+      }
+    },
+    "$note_documents": "A tool that decides compliance cannot be deployed by anyone who can be sued. This schema has no compliance field by design."
+  }
+}
