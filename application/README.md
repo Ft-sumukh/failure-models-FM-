@@ -99,7 +99,7 @@ actual system behavior.
          │ re-run on schedule or CI trigger
          ▼
   ┌──────────────┐
-  │  Fingerprint │  stored responses + capability clusters
+  │  Fingerprint │  stored decisions + capability clusters
   └──────┬───────┘
          │ compare
          ▼
@@ -115,31 +115,87 @@ significance step is where a hard problem is handled honestly — see §3.
 
 ---
 
-## Why this is research, not just a product
+## The metric, and how it was arrived at
 
-Because **the metric does not exist yet**, and every obvious candidate is
-documented not to work.
+This section reports what the experiments in `src/fmverify/` actually found.
+Two phases, and the first one failed.
 
-| Candidate | Documented failure |
-|---|---|
-| Output hash / exact diff | Flags sampling noise as change; misses semantically identical paraphrase |
-| Embedding distance | Flags surface change; under-flags semantic change; threshold is arbitrary and task-specific |
-| LLM judge | Gameable. The verifier–deployment gap (arXiv 2607.24300), stated as a principle in [thesis.md](../docs/thesis.md#1-the-claim) |
-| Line coverage | Near ceiling, barely discriminates between configurations (arXiv 2609.24341) |
-| Mutation score | Context-dependent. LLM-generated tests peak ~0.546 vs ~0.690 human-written, and can approach zero when tests exercise ineffective logic; a 2026 replication across 11 SOTA models (arXiv 2607.22880) finds it stops being a reliable indicator in exactly the setting that matters — when the artifact under test may already be wrong |
-| Canary traffic | Catches gross regressions at production cost; blind to functional change that does not move an aggregate metric |
+### Phase 1 — text comparison: a negative result
 
-**The open problem, stated as a research question:**
+Every candidate that compares two responses as text was measured against both
+sampling noise and real functional change.
 
-> Can a probe set of size N detect real functional change above sampling noise,
-> at N far below the full evaluation suite — and can the resulting drift
-> severity be separated into functionally-irrelevant and regulatory?
+| Metric | False alarm | Power | d′ | Verdict |
+|---|---|---|---|---|
+| `exact_hash` | 0.948 | 1.000 | +0.33 | unusable |
+| `token_jaccard` | 0.212 | 0.000 | **−0.97** | unusable |
+| `edit_distance` | 0.052 | 0.000 | **−1.46** | unusable |
 
-Nobody has published the N-vs-detection-power curve. Producing it is the
-research contribution, and it is a defensible contribution whether or not the
-product works.
+*(high_noise profile, n=300 noise / 200 signal)*
 
-### Two claims, in priority order
+`exact_hash` alarms on 95% of pure resamples — it cannot tell a re-sample from
+a real change. The other two have **negative d′**: real functional change is no
+more detectable than sampling variance. A negative d′ means the metric is
+tracking noise, not function. There is no threshold that fixes this, because
+the signal is not in the representation being measured.
+
+This was a kill criterion, and it fired.
+
+### Phase 2 — compare decisions, not text
+
+The structural fix: reduce each response to **the decision it encodes**, then
+compare decision distributions.
+
+```text
+response --[extract decision]--> decision --[total variation]--> distance
+```
+
+Paraphrase and hedging are discarded by the extraction step, so sampling noise
+collapses **by construction** rather than by threshold tuning. That invariance
+is the whole point — a threshold can be tuned until it looks good on one noise
+profile, but an extractor that discards irrelevant variation is quiet on every
+profile by design.
+
+| Profile | False alarm | Power | d′ | Verdict |
+|---|---|---|---|---|
+| `low_noise` | 0.030 | 1.000 | +31.6 | usable |
+| `high_noise` | 0.037 | 1.000 | +32.6 | usable |
+| `very_high_noise` | 0.028 | 1.000 | +31.2 | usable |
+| `uncertainty_noise` | 0.033 | 1.000 | +33.3 | usable |
+
+*(n_probes=10, samples_per_probe=16, target FA=0.02, 400 noise / 300 signal)*
+
+Two properties matter more than the headline d′:
+
+- **The threshold transfers.** Calibrated on `low_noise` alone (0.3125) and
+  applied unchanged, the false-alarm rate stays at 0.015–0.022 on every other
+  profile. Calibration is therefore not a per-customer cost, which is what
+  makes the product deployable rather than a bespoke integration.
+- **The failure mode is known and bounded.** `uncertainty_noise` is a profile
+  built to defeat the method: a system whose *decision itself* is unstable from
+  sample to sample. Extraction removes paraphrase noise and cannot remove
+  epistemic noise. At 5 probes the method failed it honestly (FA=0.107, above
+  the 0.10 bar); at 10 probes with a tighter threshold it passes. The boundary
+  is reported rather than hidden.
+
+### Why these numbers are not yet a product
+
+Three limits, stated plainly:
+
+1. **The target is synthetic.** A stochastic generator stands in for a deployed
+   system. The *method* transfers; these specific false-alarm rates do not.
+   Real numbers require Phase 0 against a real provider.
+2. **The independence assumption is optimistic.** Converting a per-probe
+   false-alarm rate into a probe count assumes independent probes. Probes from
+   one deployed system share a model, a prompt, and a provider, so the true N
+   is higher. The reported N is a lower bound and the cap is the number to plan
+   against.
+3. **The answer vocabulary is a stand-in.** `extract_decision` currently
+   recognises four tokens plus `<refusal>`. A real deployment needs an extractor
+   for its own decision space — structured output, a schema, or a validated
+   classification — which is where the engineering effort actually goes.
+
+### Claims, in priority order
 
 1. **Minimal witness sets.** For each real drift type, the probe count needed to
    detect it at fixed confidence — quantified, with the tradeoff curve. A
@@ -147,15 +203,19 @@ product works.
    thousand-probe set is a research result.
 2. **Severity is not one-dimensional.** A system can drift in ways that are
    functionally irrelevant and ways that are regulatory. Show they can be
-   separated, and show the naive metrics in the table above cannot.
+   separated, and show the text metrics in §3 cannot.
+3. **Phase 2 is a result worth publishing on its own.** "Text-comparison drift
+   metrics have negative d-prime under sampling noise, and reducing responses to
+   decisions fixes it structurally" is a clean, reproducible claim that
+   generalizes past this project.
 
 ### Ground truth is cheap
 
-The underrated advantage. Drift events are **reproducible on demand** — swap a
-provider, flip a pinned version, change a system prompt, rotate a retrieval
-index. Hundreds of real drift events with real ground-truth labels are
-generatable for the cost of API calls. This is not a benchmark that has to be
-hunted for; it is an experimental setup that can be constructed deliberately.
+Drift events are **reproducible on demand** — swap a provider, flip a pinned
+version, change a system prompt, rotate a retrieval index. Hundreds of real
+drift events with real ground-truth labels are generatable for the cost of API
+calls. This is not a benchmark that has to be hunted for; it is an
+experimental setup that can be constructed deliberately.
 
 ---
 

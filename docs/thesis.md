@@ -211,14 +211,32 @@ Run them early and on purpose.
   often provider-side model identity actually changes, and what breaks when it
   does. If silent drift is rare, the urgency argument collapses. This is one
   week of work and it is the single largest risk to the whole track.
-- If no candidate metric separates functional change from sampling noise at any
-  probe-set size, the product has no core. Stop.
+- ~~If no candidate metric separates functional change from sampling noise at
+  any probe-set size, the product has no core. Stop.~~ **Fired, and the
+  follow-up worked.** Phase 1 measured this and no text-comparison metric
+  separated signal from noise — `exact_hash` false-alarmed on 95% of resamples
+  and the content metrics had negative d′. The kill criterion was correct and
+  was treated as a finding rather than buried. Phase 2 replaced text comparison
+  with decision-level comparison and reached d′ ≈ +32 on the same profiles,
+  with thresholds that transfer across noise profiles. **The condition for
+  stopping is now narrower and falsifiable: the method fails when the system's
+  decision distribution is itself unstable, and that boundary is measured
+  rather than assumed.**
 - If the probe budget needed for adequate detection power is incompatible with
   a regulated enterprise's rate limits and cost floor, the product is not
   deployable regardless of how well detection works.
 - If a witness set cannot be maintained without continuous manual curation, it
   will silently decay in every customer and the second-year business does not
   exist.
+
+### What is still unmeasured
+
+Track B's numbers come from a synthetic stochastic target, not a provider. The
+*method* transfers; the specific false-alarm rates do not. The probe-count
+figure assumes independent probes, which probes from one deployed system are
+not. Both limits are stated in
+[application/README.md](../application/README.md#why-these-numbers-are-not-yet-a-product)
+and neither is resolved without Phase 0.
 
 ---
 

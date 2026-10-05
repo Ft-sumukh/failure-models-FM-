@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from fmverify.decision_metric import _threshold, run_all_profiles
 from fmverify.fms import HELDOUT_FMS, TRAINING_FMS, Attack, assert_split
 from fmverify.noise_floor import run_experiment
 from fmverify.records import AcceptanceGate, build_record
@@ -152,7 +153,7 @@ def run_track_b(profile: str = "high_noise") -> None:
             )
         print()
 
-    print("  FINDING: no candidate metric is usable.")
+    print("  FINDING: no text-comparison metric is usable.")
     print("    - exact_hash false-alarms on most resamples of a noisy system.")
     print("      It cannot tell a re-sample from a real change.")
     print("    - token_jaccard and edit_distance have NEGATIVE d-prime under")
@@ -160,11 +161,63 @@ def run_track_b(profile: str = "high_noise") -> None:
     print("      sampling variance. A negative d-prime means the metric is")
     print("      tracking noise, not function.")
     print()
-    print("  This is the Phase 1 result from application/README.md, and it is a")
-    print("  negative one. Per docs/thesis.md, that is a kill criterion for the")
-    print("  product as specified -- the next step is a property-based metric")
-    print("  that tests capability rather than comparing surface text.")
+    _run_track_b_phase2()
     print()
+
+
+def _run_track_b_phase2() -> None:
+    """The fix the phase 1 result demanded, measured the same way."""
+    print("  " + THIN)
+    print("  PHASE 2 -- decision-level metric: compare decisions, not text")
+    print("  " + THIN)
+    print()
+    print("  Structural fix: reduce each response to the decision it encodes,")
+    print("  then compare decision distributions. Paraphrase and hedging are")
+    print("  discarded by the extraction step, so sampling noise collapses by")
+    print("  construction rather than by threshold tuning.")
+    print()
+    scores = run_all_profiles(
+        n_measurements=400, n_signal=300, n_probes=10, samples_per_probe=16,
+        seed=4242, target_fa=0.02,
+    )
+    print(f"    {'profile':<20} {'FA':>6} {'power':>7} {'d_prime':>9} {'N':>5}  verdict")
+    for score in scores.values():
+        print(
+            f"    {score.profile:<20} {score.false_alarm_rate:>6.3f} "
+            f"{score.detection_power:>7.3f} {score.d_prime:>9.2f} "
+            f"{score.probes_needed:>5}  {'usable' if score.is_usable else 'UNUSABLE'}"
+        )
+    print()
+
+    calib = run_all_profiles(
+        profiles=["low_noise"], n_measurements=400, n_signal=5, n_probes=10,
+        samples_per_probe=16, seed=1, target_fa=0.02,
+    )["low_noise"]
+    threshold = _threshold(calib.distances_noise, 0.02)
+    print(f"    threshold calibrated on low_noise alone: {threshold:.4f}")
+    print("    applied unchanged to the other profiles:")
+    from fmverify.decision_metric import evaluate_decision_metric
+
+    for profile in ("high_noise", "very_high_noise", "uncertainty_noise"):
+        s = evaluate_decision_metric(
+            profile, n_measurements=400, n_signal=300, n_probes=10,
+            samples_per_probe=16, seed=99,
+        )
+        fa = sum(1 for d in s.distances_noise if d >= threshold) / len(s.distances_noise)
+        pw = sum(1 for d in s.distances_signal if d >= threshold) / len(s.distances_signal)
+        print(f"      {profile:<20} FA={fa:.3f} power={pw:.3f}")
+    print()
+    print("  FINDING: reducing to decisions changes the result qualitatively.")
+    print("    d-prime goes from -1.5..+0.3 to about +32, and a threshold")
+    print("    calibrated on one noise profile transfers to the others, so")
+    print("    calibration is not a per-customer cost.")
+    print()
+    print("  BOUNDARY, stated rather than hidden: independence is assumed when")
+    print("  converting a per-probe false-alarm rate into a probe count, and")
+    print("    probes from one deployed system are not independent -- they")
+    print("    share a model, a prompt, and a provider. The reported N is")
+    print("    therefore optimistic and the cap is the number to plan against.")
+    print("    This needs a real provider to measure, which is Phase 0.")
 
 
 def main() -> int:
