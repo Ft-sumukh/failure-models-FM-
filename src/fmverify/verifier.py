@@ -93,8 +93,17 @@ except ImportError:
 
 
 _RUNNER = '''\
+import inspect
+
 _payload = json.loads(sys.stdin.read())
 _input = _payload["input"]
+# The contract declares how many positional arguments a correct solution
+# takes. It comes from the reference implementation's signature, NOT from the
+# candidate's: inferring the call shape from the candidate would let a
+# solution with the wrong signature run anyway and be scored on a task it was
+# never given. A model that ignored one of the contract's parameters has to
+# be recorded as an arity error, not silently accommodated.
+_expected_arity = int(_payload["arity"])
 
 try:
     _scope = {}
@@ -102,7 +111,32 @@ try:
     _fn = _scope.get("solution")
     if _fn is None:
         raise NameError("candidate does not define a function named 'solution'")
-    _actual = _fn(_input)
+
+    _params = [
+        p for p in inspect.signature(_fn).parameters.values()
+        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+    ]
+    _n_required = len([p for p in _params if p.default is inspect.Parameter.empty])
+
+    if _expected_arity > 1:
+        if _n_required != _expected_arity:
+            raise TypeError(
+                f"contract supplies {_expected_arity} positional arguments but "
+                f"solution() takes {_n_required}"
+            )
+        if not isinstance(_input, list) or len(_input) != _expected_arity:
+            raise TypeError(
+                f"probe supplied {len(_input) if isinstance(_input, list) else 'a scalar'}"
+                f" argument(s), contract requires {_expected_arity}"
+            )
+        _actual = _fn(*_input)
+    else:
+        _actual = _fn(_input)
+
+    # The result must survive JSON. A candidate returning a set or a custom
+    # object is a protocol violation on the probe's side, reported distinctly
+    # from a behavioural mismatch.
+    json.dumps(_actual)
 except BaseException as _exc:
     sys.stdout.write(json.dumps({
         "raised": type(_exc).__name__,
@@ -144,8 +178,24 @@ def verify_candidate(
 
     reference_src = inspect.getsource(reference_impl)
     program = _runner_source(reference_src, lim)
+    # Arity comes from the CONTRACT's reference implementation, not the
+    # candidate. See _RUNNER for why that distinction matters.
+    try:
+        arity = len(
+            [
+                p
+                for p in inspect.signature(reference_impl).parameters.values()
+                if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+            ]
+        )
+    except (TypeError, ValueError):
+        arity = 1
     payload = json.dumps(
-        {"candidate": candidate_code, "input": input_value},
+        {
+            "candidate": candidate_code,
+            "input": input_value,
+            "arity": arity,
+        },
         default=str,
     )
 
